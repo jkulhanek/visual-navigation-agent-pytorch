@@ -1,0 +1,7 @@
+version: '3'
+services:
+  train:
+    build:
+      context: .
+      args:
+        - mode=train
