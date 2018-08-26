@@ -2,7 +2,7 @@ FROM anibali/pytorch:no-cuda
 
 
 # Prefetch ai2thor data
-RUN sudo apt-get update && sudo apt-get -y install wget unzip && /app/bin/download_ai2thor_data.sh \
+RUN sudo apt-get update && sudo apt-get -y install wget unzip \
     && mkdir /app/data \
     && cd /app/data \
     && rm -f *.h5 \ 
