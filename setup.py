@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup
 
 setup(name='deep-reactive-agent-pytorch',
       version='0.1',
@@ -11,4 +11,5 @@ setup(name='deep-reactive-agent-pytorch',
       license='MIT',
       packages=['agent'],
       scripts=['bin/train.py'],
-      requires=["matplotlib"])
+      install_requires=["matplotlib", "ai2thor", "Cython", "abc"],
+      zip_safe=True)

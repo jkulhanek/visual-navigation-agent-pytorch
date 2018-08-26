@@ -1,7 +1,8 @@
 version: '3'
 services:
   train:
+    command: "train.py"
     build:
-      context: .
+      context: .      
       args:
         - mode=train
