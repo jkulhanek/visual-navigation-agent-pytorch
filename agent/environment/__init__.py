@@ -9,6 +9,10 @@ class Environment:
     def start(self):
         pass
 
+    @abc.abstractproperty
+    def actions(self):
+        pass
+
 
 class AI2ThorEnvironment:
     '''
@@ -43,6 +47,10 @@ class AI2ThorEnvironment:
     def render(self, mode = "rgb_array"):
         if mode == "rgb_array":
             return self.state.frame
+
+    def render_target(self, mode = "rgb_array"):
+        if mode == "rgb_array":
+            return self.state
 
 def make(name):
     if name == "unity":

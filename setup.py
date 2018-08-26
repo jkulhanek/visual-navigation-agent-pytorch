@@ -11,5 +11,5 @@ setup(name='deep-reactive-agent-pytorch',
       license='MIT',
       packages=['agent'],
       scripts=['bin/train.py'],
-      install_requires=["matplotlib", "ai2thor", "Cython", "abc"],
+      install_requires=["matplotlib", "ai2thor", "Cython"],
       zip_safe=True)
