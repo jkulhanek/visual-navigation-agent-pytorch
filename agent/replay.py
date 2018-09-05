@@ -1,8 +1,8 @@
 from collections import namedtuple
 import random
 
-Transition = namedtuple('Transition',
-                        ('state', 'action', 'next_state', 'reward'))
+Sample = namedtuple('Transition',
+                        ('state', 'action', 'value', 'target', 'reward'))
 
 
 class ReplayMemory(object):
@@ -12,11 +12,12 @@ class ReplayMemory(object):
         self.memory = []
         self.position = 0
 
-    def push(self, *args):
-        """Saves a transition."""
+    def push(self, sample : Sample):
+        """Saves a sample."""
         if len(self.memory) < self.capacity:
             self.memory.append(None)
-        self.memory[self.position] = Transition(*args)
+
+        self.memory[self.position] = Sample(sample)
         self.position = (self.position + 1) % self.capacity
 
     def sample(self, batch_size):
