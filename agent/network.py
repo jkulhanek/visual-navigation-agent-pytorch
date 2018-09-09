@@ -1,7 +1,8 @@
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from resnet import resnet50
+from agent.resnet import resnet50
+import numpy as np
 
 class DQN(nn.Module):
     def __init__(self):
@@ -23,12 +24,7 @@ class DQN(nn.Module):
 
 class SharedNetwork(nn.Module):
     def __init__(self):
-        super(ActorCriticNetwork, self).__init__()
-        self.resnet = resnet50(True)
-        
-        # Froze resnet
-        for param in self.resnet.parameters():
-            param.requires_grad = False
+        super(SharedNetwork, self).__init__()
 
         # Siemense layer
         self.fc_siemense= nn.Linear(8192, 512)
@@ -36,13 +32,13 @@ class SharedNetwork(nn.Module):
         # Merge layer
         self.fc_merge = nn.Linear(1024, 512)
 
-    def forward(self, x, y):
-        x = self.resnet(x)
+    def forward(self, inp):
+        (x, y,) = inp
+        
         x = x.view(-1)
         x = self.fc_siemense(x)
         x = F.relu(x, True)
 
-        y = self.resnet(y)
         y = y.view(-1)
         y = self.fc_siemense(y)
         y = F.relu(y, True)
@@ -57,6 +53,7 @@ class SceneSpecificNetwork(nn.Module):
     Input for this network is 512 tensor
     """
     def __init__(self, action_space_size):
+        super(SceneSpecificNetwork, self).__init__()
         self.fc1 = nn.Linear(512, 512)
 
         # Policy layer
@@ -80,17 +77,17 @@ class ActorCriticLoss(nn.Module):
         pass
 
     def forward(self, policy, value, action_taken, temporary_difference, r):
-
         # Calculate policy entropy
-        policy_entropy = F.softmax(policy) * F.log_softmax(policy)
+        policy_entropy = F.softmax(policy, dim=0) * F.log_softmax(policy, dim=0)
         policy_entropy = -torch.sum(policy_entropy, 0)
 
         # Policy loss
-        policy_loss = F.nll_loss(policy, action_taken, temporary_difference) + policy_entropy * self.entropy_beta
+        nllLoss = F.nll_loss(policy.view(1, -1), torch.from_numpy(np.expand_dims(action_taken,0)))
+        policy_loss = nllLoss * torch.from_numpy(temporary_difference) + policy_entropy * self.entropy_beta
 
         # Value loss
         # learning rate for critic is half of actor's
-        value_loss = 0.5 * F.mse_loss(value, r)
+        value_loss = 0.5 * F.mse_loss(value, torch.from_numpy(r))
 
         return value_loss + policy_loss
 

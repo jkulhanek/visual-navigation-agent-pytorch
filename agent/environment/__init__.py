@@ -1,17 +1,5 @@
-import abc
-
-class Environment:
-    @abc.abstractmethod
-    def reset(self):
-        pass
-
-    @abc.abstractmethod
-    def start(self):
-        pass
-
-    @abc.abstractproperty
-    def actions(self):
-        pass
+from agent.environment.environment import Environment
+from agent.environment.ai2thor import THORDiscreteEnvironment
 
 
 class AI2ThorEnvironment:

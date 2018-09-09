@@ -1,58 +1,59 @@
-from network import SceneSpecificNetwork, SharedNetwork, ActorCriticLoss
-from environment import AI2ThorEnvironment
+from agent.network import SceneSpecificNetwork, SharedNetwork, ActorCriticLoss
+from agent.environment import Environment, THORDiscreteEnvironment
 import torch.nn as nn
 from typing import Dict, Collection
 import random
 import torch
-from input import get_screen
-from resnet import ResNet
-from replay import ReplayMemory, Sample
+from agent.replay import ReplayMemory, Sample
 from collections import namedtuple
 import torch.multiprocessing as mp
+import torch.nn.functional as F
 import numpy as np
+import logging
 
 TrainingSample = namedtuple('TrainingSample', ('state', 'policy', 'value', 'action_taken', 'goal', 'R', 'temporary_difference'))
+
 
 class TrainingThread(mp.Process):
     def __init__(self,
             id : int,
             device : torch.device,
             shared_network : SharedNetwork, 
+            logger,
             scene : str,
             entropy_beta : float,
-            max_t: int):
+            max_t: int,
+            **kwargs):
 
         super(TrainingThread, self).__init__(name = "process_{id}")
 
-        self.policy_network = None
+        # Initialize the environment
+        self.env = THORDiscreteEnvironment(scene, **kwargs)
         self.device = device
         self.shared_network = shared_network
-        self.scene_networks = scene_networks
-        self.resnet = resnet
-        self.master = master
         self.id = id
-        self.max_t = max_t
+
+        self.gamma : float= kwargs.get('gamma', 0.5)
+        self.grad_norm: float = kwargs.get('grad_norm', 40.0)
+        self.max_t : int = kwargs.get(max_t, 5)
+
+        self.logger = logger
         self.local_t = 0
         self.action_space_size = self.get_action_space_size()
 
-        if not scene in scene_networks:
-            self.scene_networks[scene] = SceneSpecificNetwork(self.action_space_size)
-        
-        self.scene_network : SceneSpecificNetwork = self.scene_networks[scene]
+        self.scene_network : SceneSpecificNetwork = SceneSpecificNetwork(self.get_action_space_size())
         self.criterion = ActorCriticLoss(entropy_beta)
         self.policy_network = nn.Sequential(self.shared_network, self.scene_network)
-        self.memory = ReplayMemory()
+        self.memory = ReplayMemory(200)
 
-        # Initialize the environment
-        self.env = AI2ThorEnvironment(scene)
+        
+        self.optimizer = torch.optim.Adagrad(self.policy_network.parameters())
 
         # Initialize the episode
         self._reset_episode()
-
-        self._sync_network()
     
-    def _sync_network(self):
-        self.shared_network.load_state_dict(self.master.shared_network.state_dict())
+    #def _sync_network(self):
+    #    self.shared_network.load_state_dict(self.master.shared_network.state_dict())
 
     def _ensure_shared_grads(self, model, shared_model):
         for param, shared_param in zip(model.parameters(), shared_model.parameters()):
@@ -63,54 +64,55 @@ class TrainingThread(mp.Process):
     def get_action_space_size(self):
         return len(self.env.actions)
 
-    def choose_action(self, policy):
-        # TODO: a place for modification
-        # Computes weighed randomized value over policy's preferences
-        values = []
-        sum = 0.0
-        for rate in policy:
-            sum = sum + rate
-            value = sum
-            values.append(value)
-        r = random.random() * sum
-        for i in range(len(values)):
-            if values[i] >= r:
-                return i
-        # fail safe
-        return len(values) - 1
-
     def start(self):
         self.env.start()
 
-    def _reset_episode():
+    def _reset_episode(self):
         self.episode_reward = 0
         self.episode_length = 0
         self.episode_max_q = -np.inf
         self.env.reset()
 
-
-    def _simulate(self, memory_buffer : Collection[Sample]):
+    def _forward_explore(self):
         # Does the evaluation end naturally?
         is_terminal = False
+        terminal_end = False
+
+        results = { "policy":[], "value": []}
+        rollout_path = {"state": [], "action": [], "rewards": [], "done": []}
 
         # Plays out one game to end or max_t
         for t in range(self.max_t):
-            x : torch.Tensor = get_screen(self.env.render(), self.device)
-            goal : torch.Tensor = get_screen(self.env.render_target(), self.device)
-            x_processed = self.resnet.forward(x)
-            goal_processed = self.resnet.forward(goal)
+            state = { 
+                "current": self.env.render('resnet_features'),
+                "goal": self.env.render_target('resnet_features'),
+            }
 
-            (policy, value) = self.policy_network(x_processed, goal_processed)
-            action = self.choose_action(policy)
+            x_processed = torch.from_numpy(state["current"])
+            goal_processed = torch.from_numpy(state["goal"])
+
+            (policy, value) = self.policy_network((x_processed, goal_processed,))
+
+            # Store raw network output to use in backprop
+            results["policy"].append(policy)
+            results["value"].append(value)
+
+            with torch.no_grad():
+                action = F.softmax(policy, dim=0).multinomial(1).data.numpy()[0]
+            
+            policy = policy.data.numpy()
+            value = value.data.numpy()
+            
+            
 
             # Makes the step in the environment
             self.env.step(action)
 
             # Receives the game reward
-            is_terminal = self.env.is_terminal()
+            is_terminal = self.env.is_terminal
 
             # ad-hoc reward for navigation
-            reward = 10.0 if terminal else -0.01
+            reward = 10.0 if is_terminal else -0.01
 
             # Max episode length
             if self.episode_length > 5e3: is_terminal = True
@@ -123,10 +125,13 @@ class TrainingThread(mp.Process):
             # clip reward
             reward = np.clip(reward, -1, 1)
 
-            memory_buffer.push(Sample(x_processed, action, value, goal_processed, reward))
-
             # Increase local time
             self.local_t += 1
+
+            rollout_path["state"].append(state)
+            rollout_path["action"].append(action)
+            rollout_path["rewards"].append(reward)
+            rollout_path["done"].append(is_terminal) 
 
             if is_terminal:
                 # TODO: add logging
@@ -135,58 +140,52 @@ class TrainingThread(mp.Process):
                 break
 
         if terminal_end:
-            return 0
+            return np.array([0], dtype = np.float32), results, rollout_path
         else:
-            x : torch.Tensor = get_screen(self.env.render(), self.device)
-            goal : torch.Tensor = get_screen(self.env.render_target(), self.device)
-            x_processed = self.resnet.forward(x)
-            goal_processed = self.resnet.forward(goal)
+            x_processed = torch.from_numpy(self.env.render('resnet_features'))
+            goal_processed = torch.from_numpy(self.env.render_target('resnet_features'))
 
-            (_, value) = self.policy_network(x_processed, goal_processed)
-            return value
+            (_, value) = self.policy_network((x_processed, goal_processed,))
+            return value.data.numpy(), results, rollout_path
 
-    def _optimize(self, batch : TrainingSample):
-        (state, policy, value, action_taken, target, playout_reward, temporary_difference) = batch
-        _, _ = self.policy_network.forward(state, target)
-        loss = self.criterion.forward(policy, value, action_taken, temporary_difference, playout_reward)
-       
-        # Optimize the model
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
-        pass
+    def _optimize_path(self, playout_reward: float, results, rollout_path):
+        loss = 0
+        for i in reversed(range(len(results))):
+            reward = rollout_path["rewards"][i]
+            value = results["value"][i]
+            action = rollout_path["action"][i]
 
-    def _prepare_batches(self, memory_buffer : Collection[Sample], playout_reward: float):
-        memory_buffer.reverse()
-        batches : Collection[TrainingSample] = []
-        for (state, action, value, target, reward) in memory_buffer:
             playout_reward = reward + self.gamma * playout_reward
-            temporary_difference = playout_reward - value
+            temporary_difference = playout_reward - value.data.numpy()
 
-            action_taken = np.zeros([ACTION_SIZE])
-            action_taken[action] = 1
-
-            batches.append(TrainingSample(state, policy, value, action_taken, target, playout_reward, temporary_difference))
-
-
-        return TrainingSample(*zip(*batches))
-
-    def run(self):
-        # Initialize samples memory
-        memory_buffer : Collection[Sample] = []
+            loss = self.criterion.forward(results["policy"][i], results["value"][i], action, temporary_difference, playout_reward) + loss
         
-        # Plays some samples
-        with torch.no_grad():
-            playout_reward : float = self._simulate(memory_buffer)
+        self.optimizer.zero_grad()
+        loss.backward()
 
-            training_batches = self._prepare_batches(memory_buffer, playout_reward)
+        # Clip gradient
+        torch.nn.utils.clip_grad_norm(self.policy_network.parameters(), self.grad_norm)
+        self.optimizer.step()
+
+        loss_value = loss.data.numpy()[0]
+        self.logger.info(f"Total loss is {loss_value}")
+
+    def run(self):        
+        # Plays some samples
+        playout_reward, results, rollout_path = self._forward_explore()
 
         # Train on collected samples
-        self._optimize(training_batches)
+        self._optimize_path(playout_reward, results, rollout_path)
         pass
 
 if __name__ == '__main__':
-    from network import SharedNetwork, SceneSpecificNetwork
+    from agent.network import SharedNetwork, SceneSpecificNetwork
+    import sys
+
+
+    logger = logging.getLogger('training')
+    logger.setLevel(logging.INFO)
+    logger.addHandler(logging.StreamHandler(sys.stdout))
 
     thread = TrainingThread(
         id = 1,
@@ -194,5 +193,11 @@ if __name__ == '__main__':
         shared_network = SharedNetwork(),
         scene = 'bedroom_04',
         entropy_beta = 0.2,
-        max_t = 5
+        logger = logger,
+        max_t = 5,
+        terminal_state_id = 264,
+        h5_file_path = 'D:\\datasets\\visual_navigation_precomputed\\bedroom_04.h5'
     )
+
+    print('Loaded')
+    thread.run()

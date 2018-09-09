@@ -6,7 +6,7 @@ import numpy as np
 import random
 import skimage.io
 from skimage.transform import resize
-from . import Environment
+from agent.environment.environment import Environment
 from torchvision import transforms
 
 class THORDiscreteEnvironment(Environment):
@@ -25,6 +25,7 @@ class THORDiscreteEnvironment(Environment):
         if h5_file_path is None:
             h5_file_path = f"/app/data/{scene_name}.h5"
 
+        self.terminal_state_id = terminal_state_id
         self.h5_file = h5py.File(h5_file_path, 'r')
         self.n_feat_per_location = n_feat_per_location
         self.locations = self.h5_file['location'][()]
@@ -38,7 +39,8 @@ class THORDiscreteEnvironment(Environment):
         self.shortest_path_distances = self.h5_file['shortest_path_distance'][()]
         self.normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406],
                                      std=[0.229, 0.224, 0.225])
-
+        self.s_target = self._tiled_state(self.terminal_state_id)
+        self.time = 0
 
     def reset(self):
         # randomize initial state
@@ -59,9 +61,9 @@ class THORDiscreteEnvironment(Environment):
         self.current_state_id = k
         self.s_t = self._tiled_state(self.current_state_id)
 
-        self.reward   = 0
         self.collided = False
         self.terminal = False
+        self.time = 0
 
     def step(self, action):
         assert not self.terminal, 'step() called in terminal state'
@@ -78,35 +80,40 @@ class THORDiscreteEnvironment(Environment):
             self.terminal = False
             self.collided = True
 
-        self.reward = self._reward(self.terminal, self.collided)
-        self.s_t = np.append(self.s_t[:,1:], self.state, axis=1)
+        self.s_t = np.append(self.s_t[:,1:], self._get_state(self.current_state_id), axis=1)
+        self.time = self.time + 1
 
+    def _get_state(self, state_id):
+        # read from hdf5 cache
+        k = random.randrange(self.n_feat_per_location)
+        return self.h5_file['resnet_feature'][state_id][k][:,np.newaxis]
 
     def _tiled_state(self, state_id):
-        k = random.randrange(self.n_feat_per_location)
-        f = self.h5_file['resnet_feature'][state_id][k][:,np.newaxis]
-        f = self.normalize(f)
+        f = self._get_state(state_id)
         return np.tile(f, (1, self.history_length))
 
-    def _reward(self, terminal, collided):
+    def _calculate_reward(self, terminal, collided):
         # positive reward upon task completion
         if terminal: return 10.0
         # time penalty or collision penalty
         return -0.1 if collided else -0.01
 
     @property
-    def state(self):
-        return {
-            "reward" : self.reward,
-            "terminal" : self.terminal
-        }
+    def reward(self):
+        return self._calculate_reward(self.is_terminal, self.collided)
 
     @property
     def is_terminal(self):
-        return self.state['terminal']
+        return self.terminal or self.time >= 5e3
 
     def render(self, mode):
+        assert mode == 'resnet_features'
         return self.s_t
 
-    def render_goal(self, mode):
-        return self.
+    def render_target(self, mode):
+        assert mode == 'resnet_features'
+        return self.s_target
+
+    @property
+    def actions(self):
+        return ["MoveForward", "RotateRight", "RotateLeft", "MoveBackward"]

@@ -2,12 +2,14 @@ from resnet import ResNet, resnet50
 from .network import SharedNetwork, SceneSpecificNetwork
 from training_thread import TrainingThread
 from .replay import ReplayMemory
+from agent.optim import SharedRMSprop
 
 class Training:
     def __init__(self, device, batch_size, entropy_beta : float):
         self.batch_size = batch_size
         self.device = device
         self.entropy_beta : float = entropy_beta
+        self.optimizer = SharedRMSprop()
 
     def run(self):
         print("Training started")
