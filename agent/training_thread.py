@@ -17,12 +17,10 @@ TrainingSample = namedtuple('TrainingSample', ('state', 'policy', 'value', 'acti
 class TrainingThread(mp.Process):
     def __init__(self,
             id : int,
-            device : torch.device,
-            shared_network : SharedNetwork, 
+            device : torch.device, 
+            master,
             logger,
             scene : str,
-            entropy_beta : float,
-            max_t: int,
             **kwargs):
 
         super(TrainingThread, self).__init__(name = "process_{id}")
@@ -30,12 +28,13 @@ class TrainingThread(mp.Process):
         # Initialize the environment
         self.env = THORDiscreteEnvironment(scene, **kwargs)
         self.device = device
-        self.shared_network = shared_network
-        self.id = id
+        self.local_backbone_network = SharedNetwork()
+        self.master = master
 
         self.gamma : float= kwargs.get('gamma', 0.5)
         self.grad_norm: float = kwargs.get('grad_norm', 40.0)
-        self.max_t : int = kwargs.get(max_t, 5)
+        entropy_beta : float = kwargs.get('entropy_beta', 0.01)
+        self.max_t : int = kwargs.get('max_t', 5)
 
         self.logger = logger
         self.local_t = 0
@@ -43,17 +42,14 @@ class TrainingThread(mp.Process):
 
         self.scene_network : SceneSpecificNetwork = SceneSpecificNetwork(self.get_action_space_size())
         self.criterion = ActorCriticLoss(entropy_beta)
-        self.policy_network = nn.Sequential(self.shared_network, self.scene_network)
-        self.memory = ReplayMemory(200)
-
-        
-        self.optimizer = torch.optim.Adagrad(self.policy_network.parameters())
+        self.policy_network = nn.Sequential(self.local_backbone_network, self.scene_network)
 
         # Initialize the episode
         self._reset_episode()
+        self._sync_network()
     
-    #def _sync_network(self):
-    #    self.shared_network.load_state_dict(self.master.shared_network.state_dict())
+    def _sync_network(self):
+        self.local_backbone_network.load_state_dict(self.master.shared_network.state_dict())
 
     def _ensure_shared_grads(self, model, shared_model):
         for param, shared_param in zip(model.parameters(), shared_model.parameters()):
@@ -72,6 +68,12 @@ class TrainingThread(mp.Process):
         self.episode_length = 0
         self.episode_max_q = -np.inf
         self.env.reset()
+
+    def _ensure_shared_grads(self, model, shared_model):
+        for param, shared_param in zip(model.parameters(), shared_model.parameters()):
+            if shared_param.grad is not None:
+                return
+            shared_param._grad = param.grad 
 
     def _forward_explore(self):
         # Does the evaluation end naturally?
@@ -148,6 +150,9 @@ class TrainingThread(mp.Process):
             (_, value) = self.policy_network((x_processed, goal_processed,))
             return value.data.numpy(), results, rollout_path
 
+    def get_local_parameters(self):
+        return self.scene_network.parameters()
+    
     def _optimize_path(self, playout_reward: float, results, rollout_path):
         loss = 0
         for i in reversed(range(len(results))):
@@ -160,23 +165,27 @@ class TrainingThread(mp.Process):
 
             loss = self.criterion.forward(results["policy"][i], results["value"][i], action, temporary_difference, playout_reward) + loss
         
-        self.optimizer.zero_grad()
+        self.master.optimizer.zero_grad()
         loss.backward()
 
         # Clip gradient
         torch.nn.utils.clip_grad_norm(self.policy_network.parameters(), self.grad_norm)
-        self.optimizer.step()
+        self._ensure_shared_grads(self.local_backbone_network, self.master.shared_network)
+        self.master.optimizer.step()
 
         loss_value = loss.data.numpy()[0]
         self.logger.info(f"Total loss is {loss_value}")
 
-    def run(self):        
-        # Plays some samples
-        playout_reward, results, rollout_path = self._forward_explore()
+    def run(self):
+        while True:
+            # Plays some samples
+            playout_reward, results, rollout_path = self._forward_explore()
 
-        # Train on collected samples
-        self._optimize_path(playout_reward, results, rollout_path)
-        pass
+            # Train on collected samples
+            self._optimize_path(playout_reward, results, rollout_path)
+            
+            self._sync_network()
+            pass
 
 if __name__ == '__main__':
     from agent.network import SharedNetwork, SceneSpecificNetwork

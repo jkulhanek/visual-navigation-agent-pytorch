@@ -13,6 +13,8 @@ parser.add_argument('--entropy_beta', type=float, default=0.01,
 
 parser.add_argument('--grad_norm', type = float, default=40.0,
     help='gradient norm clip (default: 40.0)')
+
+parser.add_argument('--learning_rate', type = float, default= 7 * 10e-4)
 parser.add_argument('--rmsp_alpha', type = float, default = 0.99,
     help='decay parameter for RMSProp optimizer (default: 0.99)')
 parser.add_argument('--rmsp_epsilon', type = float, default = 0.1,

@@ -19,11 +19,16 @@ class THORDiscreteEnvironment(Environment):
             screen_height = 224,
             terminal_state_id = 0,
             h5_file_path = None,
-            ):
+            **kwargs):
         super(THORDiscreteEnvironment, self).__init__()
+
+
 
         if h5_file_path is None:
             h5_file_path = f"/app/data/{scene_name}.h5"
+        elif callable(h5_file_path):
+            h5_file_path = h5_file_path(scene_name)
+                
 
         self.terminal_state_id = terminal_state_id
         self.h5_file = h5py.File(h5_file_path, 'r')
