@@ -45,6 +45,7 @@ class Training:
                 terminal_state_id = target,
                 **self.config)
 
+        self.createOptimizer = lambda params: torch.optim.RMSprop(params, lr = self.learning_rate, alpha = self.rmsp_alpha, eps = self.rmsp_epsilon)
         threads = [_createThread(i, task) for i, task in enumerate(branches)]
         
         # Callect all parameters from all networks
@@ -57,6 +58,9 @@ class Training:
         self.optimizer.share_memory()
 
         threads[0].run()
+        # threads[0].join()
+
+        return
 
         for thread in threads:
             thread.start()

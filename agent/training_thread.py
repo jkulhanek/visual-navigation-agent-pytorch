@@ -44,18 +44,22 @@ class TrainingThread(mp.Process):
         self.criterion = ActorCriticLoss(entropy_beta)
         self.policy_network = nn.Sequential(self.local_backbone_network, self.scene_network)
 
+        self.master.optimizer = self.master.createOptimizer(self.policy_network.parameters())
+
         # Initialize the episode
         self._reset_episode()
         self._sync_network()
     
     def _sync_network(self):
-        self.local_backbone_network.load_state_dict(self.master.shared_network.state_dict())
+        pass
+        # self.local_backbone_network.load_state_dict(self.master.shared_network.state_dict())
 
     def _ensure_shared_grads(self, model, shared_model):
-        for param, shared_param in zip(model.parameters(), shared_model.parameters()):
-            if shared_param.grad is not None:
-                return 
-            shared_param._grad = param.grad 
+        pass
+        # for param, shared_param in zip(model.parameters(), shared_model.parameters()):
+        #     if shared_param.grad is not None:
+        #         return 
+        #     shared_param._grad = param.grad 
     
     def get_action_space_size(self):
         return len(self.env.actions)
@@ -163,7 +167,7 @@ class TrainingThread(mp.Process):
             playout_reward = reward + self.gamma * playout_reward
             temporary_difference = playout_reward - value.data.numpy()
 
-            loss = self.criterion.forward(results["policy"][i], results["value"][i], action, temporary_difference, playout_reward) + loss
+            loss = loss + self.criterion.forward(results["policy"][i], results["value"][i], action, temporary_difference, playout_reward)
         
         self.master.optimizer.zero_grad()
         loss.backward()
