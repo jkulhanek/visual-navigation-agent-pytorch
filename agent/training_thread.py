@@ -36,7 +36,7 @@ class TrainingThread(mp.Process):
         entropy_beta : float = kwargs.get('entropy_beta', 0.01)
         self.max_t : int = kwargs.get('max_t', 5)
 
-        self.logger = logger
+        self.logger : logging.Logger = logger
         self.local_t = 0
         self.action_space_size = self.get_action_space_size()
 
@@ -141,6 +141,11 @@ class TrainingThread(mp.Process):
 
             if is_terminal:
                 # TODO: add logging
+                self.logger.info('playout finished')
+                self.logger.info(f'episode length: {self.episode_length}')
+                self.logger.info(f'episode reward: {self.episode_reward}')
+                self.logger.info(f'episode max_q: {self.episode_max_q}')
+
                 terminal_end = True
                 self._reset_episode()
                 break
@@ -159,7 +164,7 @@ class TrainingThread(mp.Process):
     
     def _optimize_path(self, playout_reward: float, results, rollout_path):
         loss = 0
-        for i in reversed(range(len(results))):
+        for i in reversed(range(len(results["value"]))):
             reward = rollout_path["rewards"][i]
             value = results["value"][i]
             action = rollout_path["action"][i]
@@ -170,14 +175,13 @@ class TrainingThread(mp.Process):
             loss = loss + self.criterion.forward(results["policy"][i], results["value"][i], action, temporary_difference, playout_reward)
         
         self.master.optimizer.zero_grad()
+        loss_value = loss.detach().numpy()
         loss.backward()
 
         # Clip gradient
-        torch.nn.utils.clip_grad_norm(self.policy_network.parameters(), self.grad_norm)
-        self._ensure_shared_grads(self.local_backbone_network, self.master.shared_network)
+        # torch.nn.utils.clip_grad_norm(self.policy_network.parameters(), self.grad_norm)
+        # self._ensure_shared_grads(self.local_backbone_network, self.master.shared_network)
         self.master.optimizer.step()
-
-        loss_value = loss.data.numpy()[0]
         self.logger.info(f"Total loss is {loss_value}")
 
     def run(self):
@@ -194,6 +198,9 @@ class TrainingThread(mp.Process):
 if __name__ == '__main__':
     from agent.network import SharedNetwork, SceneSpecificNetwork
     import sys
+    import pickle
+
+    model_data = pickle.load(open('D:\\models\\visual-navigation\\weights.p', 'rb'))
 
 
     logger = logging.getLogger('training')

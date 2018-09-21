@@ -83,12 +83,14 @@ class ActorCriticLoss(nn.Module):
 
         # Policy loss
         nllLoss = F.nll_loss(policy.view(1, -1), torch.from_numpy(np.expand_dims(action_taken,0)))
-        policy_loss = nllLoss * torch.from_numpy(temporary_difference) + policy_entropy * self.entropy_beta
+        policy_loss = nllLoss # * torch.from_numpy(temporary_difference) + policy_entropy * self.entropy_beta
 
         # Value loss
         # learning rate for critic is half of actor's
         value_loss = 0.5 * F.mse_loss(value, torch.from_numpy(r))
 
+        print(f'policy loss {policy_loss[0]}')
+        print(f'value loss {value_loss.item()}')
         return value_loss + policy_loss
 
 
