@@ -78,19 +78,19 @@ class ActorCriticLoss(nn.Module):
 
     def forward(self, policy, value, action_taken, temporary_difference, r):
         # Calculate policy entropy
-        policy_entropy = F.softmax(policy, dim=0) * F.log_softmax(policy, dim=0)
+        log_softmax_policy = torch.nn.functional.log_softmax(policy, dim=0)
+        softmax_policy = torch.nn.functional.softmax(policy, dim=0)
+        policy_entropy = softmax_policy * log_softmax_policy
         policy_entropy = -torch.sum(policy_entropy, 0)
 
         # Policy loss
-        nllLoss = F.nll_loss(policy.view(1, -1), torch.from_numpy(np.expand_dims(action_taken,0)))
-        policy_loss = nllLoss # * torch.from_numpy(temporary_difference) + policy_entropy * self.entropy_beta
+        nllLoss = F.nll_loss(log_softmax_policy.view(1, -1), torch.from_numpy(np.expand_dims(action_taken,0)))
+        policy_loss = nllLoss * torch.from_numpy(temporary_difference) - policy_entropy * self.entropy_beta
 
         # Value loss
         # learning rate for critic is half of actor's
-        value_loss = 0.5 * F.mse_loss(value, torch.from_numpy(r))
-
-        print(f'policy loss {policy_loss[0]}')
-        print(f'value loss {value_loss.item()}')
+        # Equivalent to 0.5 * l2 loss
+        value_loss = (0.5 * 0.5) * F.mse_loss(value, torch.from_numpy(r))
         return value_loss + policy_loss
 
 
