@@ -47,7 +47,7 @@ class TrainingThread(mp.Process):
         self.master.optimizer = self.master.createOptimizer(self.policy_network.parameters())
 
         import torch.optim as optim
-        self.optimizer = optim.RMSprop(self.policy_network.parameters())
+        self.optimizer = optim.RMSprop(self.policy_network.parameters(), eps=0.1, alpha=0.99, lr=0.0007001643593729748)
         # Initialize the episode
         self._reset_episode()
         self._sync_network()
