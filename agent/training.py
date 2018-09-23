@@ -6,12 +6,13 @@ import torch.multiprocessing as mp
 import logging
 import sys
 import torch
+import os
 
 TASK_LIST = {
   'bathroom_02': ['26', '37', '43', '53', '69'],
-  'bedroom_04': ['134', '264', '320', '384', '387'],
-  'kitchen_02': ['90', '136', '157', '207', '329'],
-  'living_room_08': ['92', '135', '193', '228', '254']
+  #'bedroom_04': ['134', '264', '320', '384', '387'],
+  #'kitchen_02': ['90', '136', '157', '207', '329'],
+  #'living_room_08': ['92', '135', '193', '228', '254']
 }
 
 class Training:
@@ -87,5 +88,20 @@ if __name__ == "__main__":
         'rmsp_epsilon': 0.1,
         'h5_file_path': (lambda scene: f"D:\\datasets\\visual_navigation_precomputed\\{scene}.h5")
     })
+
+    import pickle
+    shared_net = SharedNetwork()
+    scene_nets = { key:SceneSpecificNetwork(4) for key in TASK_LIST.keys() }
+
+    # Load weights trained on tensorflow
+    data = pickle.load(open(os.path.join(__file__, '..\\..\\weights.p'), 'rb'), encoding='latin1')
+    def convertToStateDict(data):
+        return {key:torch.Tensor(v) for (key, v) in data.items()}
+
+    training.shared_network.load_state_dict(convertToStateDict(data['navigation']))
+    for key in TASK_LIST.keys():
+        scene_nets[key].load_state_dict(convertToStateDict(data[f'navigation/{key}']))
+
+    training.threads[0].scene_network.load_state_dict(convertToStateDict(data[f'navigation/bathroom_02']))
 
     training.run()

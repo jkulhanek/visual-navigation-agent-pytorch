@@ -31,10 +31,10 @@ class TrainingThread(mp.Process):
         self.local_backbone_network = SharedNetwork()
         self.master = master
 
-        self.gamma : float= kwargs.get('gamma', 0.5)
+        self.gamma : float= kwargs.get('gamma', 0.99)
         self.grad_norm: float = kwargs.get('grad_norm', 40.0)
         entropy_beta : float = kwargs.get('entropy_beta', 0.01)
-        self.max_t : int = kwargs.get('max_t', 5)
+        self.max_t : int = kwargs.get('max_t', 1) # TODO: 5)
 
         self.logger : logging.Logger = logger
         self.local_t = 0
@@ -46,20 +46,20 @@ class TrainingThread(mp.Process):
 
         self.master.optimizer = self.master.createOptimizer(self.policy_network.parameters())
 
+        import torch.optim as optim
+        self.optimizer = optim.RMSprop(self.policy_network.parameters())
         # Initialize the episode
         self._reset_episode()
         self._sync_network()
     
     def _sync_network(self):
-        pass
-        # self.local_backbone_network.load_state_dict(self.master.shared_network.state_dict())
+        self.local_backbone_network.load_state_dict(self.master.shared_network.state_dict())
 
     def _ensure_shared_grads(self, model, shared_model):
-        pass
-        # for param, shared_param in zip(model.parameters(), shared_model.parameters()):
-        #     if shared_param.grad is not None:
-        #         return 
-        #     shared_param._grad = param.grad 
+        for param, shared_param in zip(model.parameters(), shared_model.parameters()):
+            if shared_param.grad is not None:
+                return 
+            shared_param._grad = param.grad 
     
     def get_action_space_size(self):
         return len(self.env.actions)
@@ -164,6 +164,14 @@ class TrainingThread(mp.Process):
     
     def _optimize_path(self, playout_reward: float, results, rollout_path):
         loss = 0
+
+        policy_batch = []
+        value_batch = []
+        action_batch = []
+        temporary_difference_batch = []
+        playout_reward_batch = []
+
+
         for i in reversed(range(len(results["value"]))):
             reward = rollout_path["rewards"][i]
             value = results["value"][i]
@@ -172,27 +180,36 @@ class TrainingThread(mp.Process):
             playout_reward = reward + self.gamma * playout_reward
             temporary_difference = playout_reward - value.data.numpy()
 
+            policy_batch.append(results['policy'][i])
+            value_batch.append(results['value'][i])
+            action_batch.append(action)
+            temporary_difference_batch.append(temporary_difference)
+            playout_reward_batch.append(playout_reward)
             loss = loss + self.criterion.forward(results["policy"][i], results["value"][i], action, temporary_difference, playout_reward)
         
-        self.master.optimizer.zero_grad()
+        policy_batch = torch.stack(policy_batch, 0)
+        value_batch = torch.stack(value_batch, 0)
+        action_batch = torch.from_numpy(np.array(action_batch))
+        temporary_difference_batch = torch.from_numpy(np.array(temporary_difference_batch))
+        playout_reward_batch = torch.from_numpy(np.array(playout_reward_batch))
+        self.optimizer.zero_grad()
         loss_value = loss.detach().numpy()
         loss.backward()
 
         # Clip gradient
-        # torch.nn.utils.clip_grad_norm(self.policy_network.parameters(), self.grad_norm)
+        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), self.grad_norm)
         # self._ensure_shared_grads(self.local_backbone_network, self.master.shared_network)
-        self.master.optimizer.step()
-        self.logger.info(f"Total loss is {loss_value}")
+        self.optimizer.step()
 
     def run(self):
+        self.env.reset()
         while True:
+            self._sync_network()
             # Plays some samples
             playout_reward, results, rollout_path = self._forward_explore()
-
+            print(self.episode_length)
             # Train on collected samples
             self._optimize_path(playout_reward, results, rollout_path)
-            
-            self._sync_network()
             pass
 
 if __name__ == '__main__':
@@ -215,8 +232,8 @@ if __name__ == '__main__':
         entropy_beta = 0.2,
         logger = logger,
         max_t = 5,
-        terminal_state_id = 264,
-        h5_file_path = 'D:\\datasets\\visual_navigation_precomputed\\bedroom_04.h5'
+        terminal_state_id = 26,
+        h5_file_path = 'D:\\datasets\\visual_navigation_precomputed\\bathroom_02.h5'
     )
 
     print('Loaded')
