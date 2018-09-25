@@ -63,7 +63,7 @@ class THORDiscreteEnvironment(Environment):
             if min_d > 0: break
         
         # reset parameters
-        self.current_state_id = k
+        self.current_state_id = 8 # TODO: k
         self.s_t = self._tiled_state(self.current_state_id)
 
         self.collided = False

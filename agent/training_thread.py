@@ -14,10 +14,14 @@ import logging
 TrainingSample = namedtuple('TrainingSample', ('state', 'policy', 'value', 'action_taken', 'goal', 'R', 'temporary_difference'))
 
 
+
+
+
 class TrainingThread(mp.Process):
     def __init__(self,
             id : int,
             device : torch.device, 
+            network : torch.nn.Module,
             master,
             logger,
             scene : str,
@@ -34,12 +38,13 @@ class TrainingThread(mp.Process):
         self.gamma : float= kwargs.get('gamma', 0.99)
         self.grad_norm: float = kwargs.get('grad_norm', 40.0)
         entropy_beta : float = kwargs.get('entropy_beta', 0.01)
-        self.max_t : int = kwargs.get('max_t', 5)
+        self.max_t : int = kwargs.get('max_t', 1) # TODO: 5)
 
         self.logger : logging.Logger = logger
         self.local_t = 0
         self.action_space_size = self.get_action_space_size()
 
+        self.master_network = network
         self.scene_network : SceneSpecificNetwork = SceneSpecificNetwork(self.get_action_space_size())
         self.criterion = ActorCriticLoss(entropy_beta)
         self.policy_network = nn.Sequential(self.local_backbone_network, self.scene_network)
@@ -47,16 +52,17 @@ class TrainingThread(mp.Process):
         self.master.optimizer = self.master.createOptimizer(self.policy_network.parameters())
 
         import torch.optim as optim
-        self.optimizer = optim.RMSprop(self.policy_network.parameters(), eps=0.1, alpha=0.99, lr=0.0007001643593729748)
+        optimizer = optim.RMSprop(self.policy_network.parameters(), eps=0.1, alpha=0.99, lr=0.0007001643593729748)
+        
         # Initialize the episode
         self._reset_episode()
         self._sync_network()
     
     def _sync_network(self):
-        self.local_backbone_network.load_state_dict(self.master.shared_network.state_dict())
+        self.policy_network.load_state_dict(self.master_network.state_dict())
 
-    def _ensure_shared_grads(self, model, shared_model):
-        for param, shared_param in zip(model.parameters(), shared_model.parameters()):
+    def _ensure_shared_grads(self):
+        for param, shared_param in zip(self.policy_network.parameters(), self.master_network.parameters()):
             if shared_param.grad is not None:
                 return 
             shared_param._grad = param.grad 
@@ -72,12 +78,6 @@ class TrainingThread(mp.Process):
         self.episode_length = 0
         self.episode_max_q = -np.inf
         self.env.reset()
-
-    def _ensure_shared_grads(self, model, shared_model):
-        for param, shared_param in zip(model.parameters(), shared_model.parameters()):
-            if shared_param.grad is not None:
-                return
-            shared_param._grad = param.grad 
 
     def _forward_explore(self):
         # Does the evaluation end naturally?
@@ -104,7 +104,9 @@ class TrainingThread(mp.Process):
             results["value"].append(value)
 
             with torch.no_grad():
-                action = F.softmax(policy, dim=0).multinomial(1).data.numpy()[0]
+                (_, action,) = policy.max(0)
+                action = action[0]
+                # action = F.softmax(policy, dim=0).multinomial(1).data.numpy()[0]
             
             policy = policy.data.numpy()
             value = value.data.numpy()
@@ -158,9 +160,6 @@ class TrainingThread(mp.Process):
 
             (_, value) = self.policy_network((x_processed, goal_processed,))
             return value.data.numpy(), results, rollout_path
-
-    def get_local_parameters(self):
-        return self.scene_network.parameters()
     
     def _optimize_path(self, playout_reward: float, results, rollout_path):
         policy_batch = []
@@ -189,22 +188,21 @@ class TrainingThread(mp.Process):
         action_batch = torch.from_numpy(np.array(action_batch))
         temporary_difference_batch = torch.from_numpy(np.array(temporary_difference_batch))
         playout_reward_batch = torch.from_numpy(np.array(playout_reward_batch))
+        
+        # Compute loss
         loss = self.criterion.forward(policy_batch, value_batch, action_batch, temporary_difference_batch, playout_reward_batch)
         loss = loss.sum()
-        self.optimizer.zero_grad()
-        loss_value = loss.detach().numpy()
-        loss.backward()
 
-        # Clip gradient
-        torch.nn.utils.clip_grad_norm_(self.policy_network.parameters(), self.grad_norm)
-        # self._ensure_shared_grads(self.local_backbone_network, self.master.shared_network)
-        self.optimizer.step()
+        loss_value = loss.detach().numpy()
+        self.master.optimizer.optimize(loss, 
+            self.policy_network.parameters(), 
+            self.master_network.parameters())
 
     def run(self):
         self.env.reset()
         self._sync_network()
         while True:
-            #self._sync_network()
+            self._sync_network()
             # Plays some samples
             playout_reward, results, rollout_path = self._forward_explore()
             # Train on collected samples
