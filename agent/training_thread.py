@@ -34,7 +34,7 @@ class TrainingThread(mp.Process):
         self.gamma : float= kwargs.get('gamma', 0.99)
         self.grad_norm: float = kwargs.get('grad_norm', 40.0)
         entropy_beta : float = kwargs.get('entropy_beta', 0.01)
-        self.max_t : int = kwargs.get('max_t', 1) # TODO: 5)
+        self.max_t : int = kwargs.get('max_t', 5)
 
         self.logger : logging.Logger = logger
         self.local_t = 0
@@ -190,6 +190,7 @@ class TrainingThread(mp.Process):
         temporary_difference_batch = torch.from_numpy(np.array(temporary_difference_batch))
         playout_reward_batch = torch.from_numpy(np.array(playout_reward_batch))
         loss = self.criterion.forward(policy_batch, value_batch, action_batch, temporary_difference_batch, playout_reward_batch)
+        loss = loss.sum()
         self.optimizer.zero_grad()
         loss_value = loss.detach().numpy()
         loss.backward()
@@ -206,7 +207,6 @@ class TrainingThread(mp.Process):
             #self._sync_network()
             # Plays some samples
             playout_reward, results, rollout_path = self._forward_explore()
-            print(self.episode_length)
             # Train on collected samples
             self._optimize_path(playout_reward, results, rollout_path)
             pass
