@@ -163,8 +163,6 @@ class TrainingThread(mp.Process):
         return self.scene_network.parameters()
     
     def _optimize_path(self, playout_reward: float, results, rollout_path):
-        loss = 0
-
         policy_batch = []
         value_batch = []
         action_batch = []
@@ -185,13 +183,13 @@ class TrainingThread(mp.Process):
             action_batch.append(action)
             temporary_difference_batch.append(temporary_difference)
             playout_reward_batch.append(playout_reward)
-            loss = loss + self.criterion.forward(results["policy"][i], results["value"][i], action, temporary_difference, playout_reward)
         
         policy_batch = torch.stack(policy_batch, 0)
         value_batch = torch.stack(value_batch, 0)
         action_batch = torch.from_numpy(np.array(action_batch))
         temporary_difference_batch = torch.from_numpy(np.array(temporary_difference_batch))
         playout_reward_batch = torch.from_numpy(np.array(playout_reward_batch))
+        loss = self.criterion.forward(policy_batch, value_batch, action_batch, temporary_difference_batch, playout_reward_batch)
         self.optimizer.zero_grad()
         loss_value = loss.detach().numpy()
         loss.backward()
@@ -203,8 +201,9 @@ class TrainingThread(mp.Process):
 
     def run(self):
         self.env.reset()
+        self._sync_network()
         while True:
-            self._sync_network()
+            #self._sync_network()
             # Plays some samples
             playout_reward, results, rollout_path = self._forward_explore()
             print(self.episode_length)
