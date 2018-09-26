@@ -27,13 +27,14 @@ class TrainingThread(mp.Process):
             scene : str,
             **kwargs):
 
-        super(TrainingThread, self).__init__(name = "process_{id}")
+        super(TrainingThread, self).__init__()
 
         # Initialize the environment
         self.env = THORDiscreteEnvironment(scene, **kwargs)
         self.device = device
         self.local_backbone_network = SharedNetwork()
         self.master = master
+        self.id = id
 
         self.gamma : float= kwargs.get('gamma', 0.99)
         self.grad_norm: float = kwargs.get('grad_norm', 40.0)
@@ -49,11 +50,6 @@ class TrainingThread(mp.Process):
         self.criterion = ActorCriticLoss(entropy_beta)
         self.policy_network = nn.Sequential(self.local_backbone_network, self.scene_network)
 
-        self.master.optimizer = self.master.createOptimizer(self.policy_network.parameters())
-
-        import torch.optim as optim
-        optimizer = optim.RMSprop(self.policy_network.parameters(), eps=0.1, alpha=0.99, lr=0.0007001643593729748)
-        
         # Initialize the episode
         self._reset_episode()
         self._sync_network()
@@ -69,9 +65,6 @@ class TrainingThread(mp.Process):
     
     def get_action_space_size(self):
         return len(self.env.actions)
-
-    def start(self):
-        self.env.start()
 
     def _reset_episode(self):
         self.episode_reward = 0
@@ -98,6 +91,7 @@ class TrainingThread(mp.Process):
             goal_processed = torch.from_numpy(state["goal"])
 
             (policy, value) = self.policy_network((x_processed, goal_processed,))
+            print('oka')
 
             # Store raw network output to use in backprop
             results["policy"].append(policy)
@@ -112,7 +106,6 @@ class TrainingThread(mp.Process):
             value = value.data.numpy()
             
             
-
             # Makes the step in the environment
             self.env.step(action)
 
@@ -139,7 +132,7 @@ class TrainingThread(mp.Process):
             rollout_path["state"].append(state)
             rollout_path["action"].append(action)
             rollout_path["rewards"].append(reward)
-            rollout_path["done"].append(is_terminal) 
+            rollout_path["done"].append(is_terminal)
 
             if is_terminal:
                 # TODO: add logging
@@ -194,44 +187,22 @@ class TrainingThread(mp.Process):
         loss = loss.sum()
 
         loss_value = loss.detach().numpy()
+        print(loss_value)
         self.master.optimizer.optimize(loss, 
             self.policy_network.parameters(), 
             self.master_network.parameters())
 
     def run(self):
-        self.env.reset()
-        self._sync_network()
-        while True:
-            self._sync_network()
-            # Plays some samples
-            playout_reward, results, rollout_path = self._forward_explore()
-            # Train on collected samples
-            self._optimize_path(playout_reward, results, rollout_path)
-            pass
-
-if __name__ == '__main__':
-    from agent.network import SharedNetwork, SceneSpecificNetwork
-    import sys
-    import pickle
-
-    model_data = pickle.load(open('D:\\models\\visual-navigation\\weights.p', 'rb'))
-
-
-    logger = logging.getLogger('training')
-    logger.setLevel(logging.INFO)
-    logger.addHandler(logging.StreamHandler(sys.stdout))
-
-    thread = TrainingThread(
-        id = 1,
-        device = torch.device('cpu'),
-        shared_network = SharedNetwork(),
-        scene = 'bedroom_04',
-        entropy_beta = 0.2,
-        logger = logger,
-        max_t = 5,
-        terminal_state_id = 26,
-        h5_file_path = 'D:\\datasets\\visual_navigation_precomputed\\bathroom_02.h5'
-    )
-
-    print('Loaded')
-    thread.run()
+        print(f'Thread {self.id} started')
+        try:
+            self.env.reset()
+            while True:
+                self._sync_network()
+                # Plays some samples
+                playout_reward, results, rollout_path = self._forward_explore()
+                print(self.episode_length)
+                # Train on collected samples
+                self._optimize_path(playout_reward, results, rollout_path)
+                pass
+        except Exception as e:
+            self.logger.error(e.msg)

@@ -70,23 +70,6 @@ class Training:
         for net in self.scene_networks.values():
             net.share_memory()
 
-        branches = [(scene, int(target)) for scene in TASK_LIST.keys() for target in TASK_LIST.get(scene)]
-
-        def _createThread(id, task):
-            (scene, target) = task
-            return TrainingThread(
-                id = id,
-                device = self.device,
-                master = self,
-                network = nn.Sequential(self.shared_network, self.scene_networks[scene]),
-                scene = scene,
-                logger = self.logger,
-                terminal_state_id = target,
-                **self.config)
-
-        self.createOptimizer = lambda params: torch.optim.RMSprop(params, lr = self.learning_rate, alpha = self.rmsp_alpha, eps = self.rmsp_epsilon)
-        self.threads = [_createThread(i, task) for i, task in enumerate(branches)]
-
     def run(self):
         print("Training started")
         self.print_parameters()
@@ -102,15 +85,30 @@ class Training:
         optimizer_wrapper = TrainingOptimizer(self.grad_norm, optimizer, parameters)
         self.optimizer = optimizer_wrapper
 
-        self.threads[0].run()
-        # threads[0].join()
+        # Prepare threads
+        branches = [(scene, int(target)) for scene in TASK_LIST.keys() for target in TASK_LIST.get(scene)]
+        def _createThread(id, task):
+            (scene, target) = task
+            net = nn.Sequential(self.shared_network, self.scene_networks[scene])
+            net.share_memory()
+            return TrainingThread(
+                id = id,
+                device = self.device,
+                master = self,
+                network = net,
+                scene = scene,
+                logger = self.logger,
+                terminal_state_id = target,
+                **self.config)
 
-        return
+        self.threads = [_createThread(i, task) for i, task in enumerate(branches)]
+        self.threads[0].start()
+        self.threads[0].join()
 
-        for thread in threads:
+        for thread in self.threads:
             thread.start()
 
-        for thread in threads:
+        for thread in self.threads:
             thread.join()
         
 
@@ -124,14 +122,14 @@ class Training:
         self.logger.info(f"- batch size: {self.config.get('batch_size')}")
         self.logger.info(f"- gamma: {self.config.get('gamma')}")
         self.logger.info(f"- learning rate: {self.config.get('learning_rate')}")
-    
 
 if __name__ == "__main__":
+    mp.set_start_method('spawn')
     training = Training(torch.device('cpu'), {
         'learning_rate': 7 * 10e4,
         'rmsp_alpha': 0.99,
         'rmsp_epsilon': 0.1,
-        'h5_file_path': (lambda scene: f"D:\\datasets\\visual_navigation_precomputed\\{scene}.h5")
+        'h5_file_path': (lambda scene: f"/mnt/d/datasets/visual_navigation_precomputed/{scene}.h5")
     })
 
     import pickle
@@ -139,7 +137,7 @@ if __name__ == "__main__":
     scene_nets = { key:SceneSpecificNetwork(4) for key in TASK_LIST.keys() }
 
     # Load weights trained on tensorflow
-    data = pickle.load(open(os.path.join(__file__, '..\\..\\weights.p'), 'rb'), encoding='latin1')
+    data = pickle.load(open(os.path.normpath(os.path.join(__file__, '../weights.p')), 'rb'), encoding='latin1')
     def convertToStateDict(data):
         return {key:torch.Tensor(v) for (key, v) in data.items()}
 

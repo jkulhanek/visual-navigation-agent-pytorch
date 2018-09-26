@@ -36,7 +36,9 @@ class SharedNetwork(nn.Module):
         (x, y,) = inp
         
         x = x.view(-1)
+        print(self.fc_siemense.weight)  
         x = self.fc_siemense(x)
+        print('testok')   
         x = F.relu(x, True)
 
         y = y.view(-1)
