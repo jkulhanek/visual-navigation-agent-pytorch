@@ -68,7 +68,7 @@ class SceneSpecificNetwork(nn.Module):
         x_policy = self.fc2_policy(x)
         #x_policy = F.softmax(x_policy)
 
-        x_value = self.fc2_value(x)
+        x_value = self.fc2_value(x)[0]
         return (x_policy, x_value, )
 
 class ActorCriticLoss(nn.Module):
@@ -84,13 +84,14 @@ class ActorCriticLoss(nn.Module):
         policy_entropy = -torch.sum(policy_entropy, 1)
 
         # Policy loss
-        nllLoss = F.nll_loss(log_softmax_policy, action_taken)
+        nllLoss = F.nll_loss(log_softmax_policy, action_taken, reduce=False)
         policy_loss = nllLoss * temporary_difference - policy_entropy * self.entropy_beta
+        policy_loss = policy_loss.sum(0)
 
         # Value loss
         # learning rate for critic is half of actor's
         # Equivalent to 0.5 * l2 loss
-        value_loss = (0.5 * 0.5) * F.mse_loss(value, r)
+        value_loss = (0.5 * 0.5) * F.mse_loss(value, r, size_average=False)
         return value_loss + policy_loss
 
 

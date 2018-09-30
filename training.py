@@ -100,8 +100,7 @@ class Training:
                 **self.config)
 
         self.threads = [_createThread(i, task) for i, task in enumerate(branches)]
-        self.threads[0].start()
-        self.threads[0].join()
+        self.threads[0].run()
 
         for thread in self.threads:
             thread.start()
@@ -127,7 +126,7 @@ if __name__ == "__main__":
         'learning_rate': 7 * 10e4,
         'rmsp_alpha': 0.99,
         'rmsp_epsilon': 0.1,
-        'h5_file_path': "/mnt/d/datasets/visual_navigation_precomputed/{scene}.h5"
+        'h5_file_path': "D:\\datasets\\visual_navigation_precomputed\\{scene}.h5"
     })
 
     import pickle
@@ -135,7 +134,7 @@ if __name__ == "__main__":
     scene_nets = { key:SceneSpecificNetwork(4) for key in TASK_LIST.keys() }
 
     # Load weights trained on tensorflow
-    data = pickle.load(open(os.path.normpath(os.path.join(__file__, '../weights.p')), 'rb'), encoding='latin1')
+    data = pickle.load(open(os.path.normpath(os.path.join(__file__, '..\\weights.p')), 'rb'), encoding='latin1')
     def convertToStateDict(data):
         return {key:torch.Tensor(v) for (key, v) in data.items()}
 

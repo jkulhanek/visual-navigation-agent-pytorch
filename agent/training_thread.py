@@ -59,7 +59,7 @@ class TrainingThread(mp.Process):
         self.gamma : float = self.init_args.get('gamma', 0.99)
         self.grad_norm: float = self.init_args.get('grad_norm', 40.0)
         entropy_beta : float = self.init_args.get('entropy_beta', 0.01)
-        self.max_t : int = self.init_args.get('max_t', 1) # TODO: 5)
+        self.max_t : int = self.init_args.get('max_t', 5)
         self.local_t = 0
         self.action_space_size = self.get_action_space_size()
 
@@ -106,6 +106,7 @@ class TrainingThread(mp.Process):
             with torch.no_grad():
                 (_, action,) = policy.max(0)
                 action = action[0]
+                # TODO: add multinomial selection of best action
                 # action = F.softmax(policy, dim=0).multinomial(1).data.numpy()[0]
             
             policy = policy.data.numpy()
@@ -152,13 +153,13 @@ class TrainingThread(mp.Process):
                 break
 
         if terminal_end:
-            return np.array([0], dtype = np.float32), results, rollout_path
+            return 0.0, results, rollout_path
         else:
             x_processed = torch.from_numpy(self.env.render('resnet_features'))
             goal_processed = torch.from_numpy(self.env.render_target('resnet_features'))
 
             (_, value) = self.policy_network((x_processed, goal_processed,))
-            return value.data.numpy(), results, rollout_path
+            return value.data.item(), results, rollout_path
     
     def _optimize_path(self, playout_reward: float, results, rollout_path):
         policy_batch = []
@@ -174,7 +175,7 @@ class TrainingThread(mp.Process):
             action = rollout_path["action"][i]
 
             playout_reward = reward + self.gamma * playout_reward
-            temporary_difference = playout_reward - value.data.numpy()
+            temporary_difference = playout_reward - value.data.item()
 
             policy_batch.append(results['policy'][i])
             value_batch.append(results['value'][i])
@@ -184,9 +185,9 @@ class TrainingThread(mp.Process):
         
         policy_batch = torch.stack(policy_batch, 0)
         value_batch = torch.stack(value_batch, 0)
-        action_batch = torch.from_numpy(np.array(action_batch))
-        temporary_difference_batch = torch.from_numpy(np.array(temporary_difference_batch))
-        playout_reward_batch = torch.from_numpy(np.array(playout_reward_batch))
+        action_batch = torch.stack(action_batch, 0)
+        temporary_difference_batch = torch.from_numpy(np.array(temporary_difference_batch, dtype=np.float32))
+        playout_reward_batch = torch.from_numpy(np.array(playout_reward_batch, dtype=np.float32))
         
         # Compute loss
         loss = self.criterion.forward(policy_batch, value_batch, action_batch, temporary_difference_batch, playout_reward_batch)
