@@ -22,7 +22,7 @@ class TrainingOptimizer:
         self.optimizer : torch.optim.Optimizer = optimizer
         self.named_parameters = named_parameters
         self.grad_norm = grad_norm
-        self.lock = threading.Lock()
+        self.lock = mp.Lock()
 
     def optimize(self, loss, local_params, shared_params):
         local_params = list(local_params)
@@ -93,11 +93,9 @@ class Training:
             net.share_memory()
             return TrainingThread(
                 id = id,
-                device = self.device,
-                master = self,
+                optimizer = optimizer_wrapper,
                 network = net,
                 scene = scene,
-                logger = self.logger,
                 terminal_state_id = target,
                 **self.config)
 
@@ -129,7 +127,7 @@ if __name__ == "__main__":
         'learning_rate': 7 * 10e4,
         'rmsp_alpha': 0.99,
         'rmsp_epsilon': 0.1,
-        'h5_file_path': (lambda scene: f"/mnt/d/datasets/visual_navigation_precomputed/{scene}.h5")
+        'h5_file_path': "/mnt/d/datasets/visual_navigation_precomputed/{scene}.h5"
     })
 
     import pickle

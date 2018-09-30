@@ -4,6 +4,7 @@ import torch.nn as nn
 from typing import Dict, Collection
 import random
 import torch
+import h5py
 from agent.replay import ReplayMemory, Sample
 from collections import namedtuple
 import torch.multiprocessing as mp
@@ -20,40 +21,23 @@ TrainingSample = namedtuple('TrainingSample', ('state', 'policy', 'value', 'acti
 class TrainingThread(mp.Process):
     def __init__(self,
             id : int,
-            device : torch.device, 
             network : torch.nn.Module,
-            master,
-            logger,
+            optimizer,
             scene : str,
             **kwargs):
 
         super(TrainingThread, self).__init__()
 
         # Initialize the environment
-        self.env = THORDiscreteEnvironment(scene, **kwargs)
-        self.device = device
+        self.env = None
+        self.init_args = kwargs
+        self.scene = scene
         self.local_backbone_network = SharedNetwork()
-        self.master = master
         self.id = id
 
-        self.gamma : float= kwargs.get('gamma', 0.99)
-        self.grad_norm: float = kwargs.get('grad_norm', 40.0)
-        entropy_beta : float = kwargs.get('entropy_beta', 0.01)
-        self.max_t : int = kwargs.get('max_t', 1) # TODO: 5)
-
-        self.logger : logging.Logger = logger
-        self.local_t = 0
-        self.action_space_size = self.get_action_space_size()
-
         self.master_network = network
-        self.scene_network : SceneSpecificNetwork = SceneSpecificNetwork(self.get_action_space_size())
-        self.criterion = ActorCriticLoss(entropy_beta)
-        self.policy_network = nn.Sequential(self.local_backbone_network, self.scene_network)
+        self.optimizer = optimizer
 
-        # Initialize the episode
-        self._reset_episode()
-        self._sync_network()
-    
     def _sync_network(self):
         self.policy_network.load_state_dict(self.master_network.state_dict())
 
@@ -65,6 +49,29 @@ class TrainingThread(mp.Process):
     
     def get_action_space_size(self):
         return len(self.env.actions)
+
+    def _initialize_thread(self):
+        h5_file_path = self.init_args.get('h5_file_path')
+        # self.logger = logging.getLogger('agent')
+        # self.logger.setLevel(logging.INFO)
+        self.init_args['h5_file_path'] = lambda scene: h5_file_path.replace('{scene}', scene)
+        self.env = THORDiscreteEnvironment(self.scene, **self.init_args)
+        self.gamma : float = self.init_args.get('gamma', 0.99)
+        self.grad_norm: float = self.init_args.get('grad_norm', 40.0)
+        entropy_beta : float = self.init_args.get('entropy_beta', 0.01)
+        self.max_t : int = self.init_args.get('max_t', 1) # TODO: 5)
+        self.local_t = 0
+        self.action_space_size = self.get_action_space_size()
+
+        self.criterion = ActorCriticLoss(entropy_beta)
+        self.policy_network = nn.Sequential(SharedNetwork(), SceneSpecificNetwork(self.get_action_space_size()))
+    
+
+
+        # Initialize the episode
+        self._reset_episode()
+        self._sync_network()
+
 
     def _reset_episode(self):
         self.episode_reward = 0
@@ -91,7 +98,6 @@ class TrainingThread(mp.Process):
             goal_processed = torch.from_numpy(state["goal"])
 
             (policy, value) = self.policy_network((x_processed, goal_processed,))
-            print('oka')
 
             # Store raw network output to use in backprop
             results["policy"].append(policy)
@@ -136,10 +142,10 @@ class TrainingThread(mp.Process):
 
             if is_terminal:
                 # TODO: add logging
-                self.logger.info('playout finished')
-                self.logger.info(f'episode length: {self.episode_length}')
-                self.logger.info(f'episode reward: {self.episode_reward}')
-                self.logger.info(f'episode max_q: {self.episode_max_q}')
+                print('playout finished')
+                print(f'episode length: {self.episode_length}')
+                print(f'episode reward: {self.episode_reward}')
+                print(f'episode max_q: {self.episode_max_q}')
 
                 terminal_end = True
                 self._reset_episode()
@@ -187,12 +193,14 @@ class TrainingThread(mp.Process):
         loss = loss.sum()
 
         loss_value = loss.detach().numpy()
-        print(loss_value)
-        self.master.optimizer.optimize(loss, 
+        self.optimizer.optimize(loss, 
             self.policy_network.parameters(), 
             self.master_network.parameters())
 
     def run(self):
+        # We need to silence all errors on new process
+        h5py._errors.silence_errors()
+        self._initialize_thread()
         print(f'Thread {self.id} started')
         try:
             self.env.reset()
@@ -200,9 +208,10 @@ class TrainingThread(mp.Process):
                 self._sync_network()
                 # Plays some samples
                 playout_reward, results, rollout_path = self._forward_explore()
-                print(self.episode_length)
                 # Train on collected samples
                 self._optimize_path(playout_reward, results, rollout_path)
                 pass
         except Exception as e:
-            self.logger.error(e.msg)
+            print(e)
+            # TODO: add logging
+            #self.logger.error(e.msg)
