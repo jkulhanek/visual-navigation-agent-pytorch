@@ -59,7 +59,7 @@ class TrainingThread(mp.Process):
         self.gamma : float = self.init_args.get('gamma', 0.99)
         self.grad_norm: float = self.init_args.get('grad_norm', 40.0)
         entropy_beta : float = self.init_args.get('entropy_beta', 0.01)
-        self.max_t : int = self.init_args.get('max_t', 5)
+        self.max_t : int = self.init_args.get('max_t', 1)# TODO: 5)
         self.local_t = 0
         self.action_space_size = self.get_action_space_size()
 
@@ -105,9 +105,7 @@ class TrainingThread(mp.Process):
 
             with torch.no_grad():
                 (_, action,) = policy.max(0)
-                action = action[0]
-                # TODO: add multinomial selection of best action
-                # action = F.softmax(policy, dim=0).multinomial(1).data.numpy()[0]
+                action = F.softmax(policy, dim=0).multinomial(1).item()
             
             policy = policy.data.numpy()
             value = value.data.numpy()
@@ -185,7 +183,7 @@ class TrainingThread(mp.Process):
         
         policy_batch = torch.stack(policy_batch, 0)
         value_batch = torch.stack(value_batch, 0)
-        action_batch = torch.stack(action_batch, 0)
+        action_batch = torch.from_numpy(np.array(action_batch, dtype=np.int64))
         temporary_difference_batch = torch.from_numpy(np.array(temporary_difference_batch, dtype=np.float32))
         playout_reward_batch = torch.from_numpy(np.array(playout_reward_batch, dtype=np.float32))
         
@@ -216,3 +214,4 @@ class TrainingThread(mp.Process):
             print(e)
             # TODO: add logging
             #self.logger.error(e.msg)
+            raise e

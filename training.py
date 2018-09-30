@@ -12,9 +12,9 @@ import threading
 
 TASK_LIST = {
   'bathroom_02': ['26', '37', '43', '53', '69'],
-  #'bedroom_04': ['134', '264', '320', '384', '387'],
-  #'kitchen_02': ['90', '136', '157', '207', '329'],
-  #'living_room_08': ['92', '135', '193', '228', '254']
+  'bedroom_04': ['134', '264', '320', '384', '387'],
+  'kitchen_02': ['90', '136', '157', '207', '329'],
+  'living_room_08': ['92', '135', '193', '228', '254']
 }
 
 class TrainingOptimizer:
@@ -80,7 +80,7 @@ class Training:
             parameters.extend(net.parameters())
 
         # Create optimizer
-        optimizer = SharedRMSprop(parameters,  eps=0.1, alpha=0.99, lr=0.0007001643593729748) # lr = self.learning_rate, alpha = self.rmsp_alpha, eps = self.rmsp_epsilon)
+        optimizer = SharedRMSprop(parameters, eps=self.rmsp_epsilon, alpha=self.rmsp_alpha, lr=self.learning_rate)
         optimizer.share_memory()
         optimizer_wrapper = TrainingOptimizer(self.grad_norm, optimizer, parameters)
         self.optimizer = optimizer_wrapper
@@ -100,7 +100,6 @@ class Training:
                 **self.config)
 
         self.threads = [_createThread(i, task) for i, task in enumerate(branches)]
-        self.threads[0].run()
 
         for thread in self.threads:
             thread.start()
@@ -123,7 +122,7 @@ class Training:
 if __name__ == "__main__":
     mp.set_start_method('spawn')
     training = Training(torch.device('cpu'), {
-        'learning_rate': 7 * 10e4,
+        'learning_rate': 0.0007001643593729748,
         'rmsp_alpha': 0.99,
         'rmsp_epsilon': 0.1,
         'h5_file_path': "D:\\datasets\\visual_navigation_precomputed\\{scene}.h5"
