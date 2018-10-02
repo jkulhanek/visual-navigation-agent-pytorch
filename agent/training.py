@@ -219,10 +219,10 @@ class Training:
                 **self.config)
 
         self.threads = [_createThread(i, task) for i, task in enumerate(branches)]
-        for thread in self.threads[:1]:
+        for thread in self.threads:
             thread.start()
 
-        for thread in self.threads[:1]:
+        for thread in self.threads:
             thread.join()
         
 
