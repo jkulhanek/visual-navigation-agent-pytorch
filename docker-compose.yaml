@@ -8,7 +8,7 @@ services:
     image: kulhanek/visual-navigation-agent-pytorch
 
   train:
-    command: "/app/train.py"
+    command: "python /app/train.py"
     image: kulhanek/visual-navigation-agent-pytorch
 
 volumes:
