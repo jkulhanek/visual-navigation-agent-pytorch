@@ -11,7 +11,7 @@ services:
 
   train:
     command: "train.py"
-    image: kulhanek/visual-navigation-agent-pytorch-train
+    image: kulhanek/visual-navigation-agent-pytorch
 
 volumes:
   agentmodel:
