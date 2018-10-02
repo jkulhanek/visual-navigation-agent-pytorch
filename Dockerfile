@@ -15,4 +15,6 @@ RUN sudo apt-get update && sudo apt-get -y install wget unzip \
 RUN python -m pip install matplotlib ai2thor Cython scikit-image
 
 COPY . /app
-RUN /app/setup.py install
+
+# Run the install command as admin
+RUN sudo /home/user/miniconda/envs/py36/bin/python3.6 /app/setup.py install
