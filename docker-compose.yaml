@@ -2,9 +2,7 @@ version: '3'
 services:
   agent:
     build:
-      context: .      
-      args:
-        - mode=train
+      context: .
     volumes:
       - agentmodel:/model
     image: kulhanek/visual-navigation-agent-pytorch
