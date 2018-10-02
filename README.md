@@ -1,3 +1,7 @@
+Version|Build|Size|Version|Stars|Pulls|Docker Hub
+---|---|---|---|---|---|---
+latest|[![Codefresh build status](https://g.codefresh.io/api/badges/build?branch=master&repoName=visual-navigation-agent-pytorch&repoOwner=kulhanek&pipelineName=visual-navigation-agent-pytorch&accountName=visual-navigation-agent-pytorch)](https://g.codefresh.io/repositories/kulhanek/visual-navigation-agent-pytorch/builds?filter=trigger:build) | [![](https://images.microbadger.com/badges/image/kulhanek/visual-navigation-agent-pytorch.svg)](https://microbadger.com/images/kulhanek/visual-navigation-agent-pytorch "Get your own image badge on microbadger.com") | [![](https://images.microbadger.com/badges/version/kulhanek/visual-navigation-agent-pytorch.svg)](https://microbadger.com/images/kulhanek/visual-navigation-agent-pytorch "Get your own version badge on microbadger.com") | [![Docker Stars](https://img.shields.io/docker/stars/kulhanek/visual-navigation-agent-pytorch.svg?style=flat-square)](https://hub.docker.com/r/kulhanek/visual-navigation-agent-pytorch/) | [![Docker Pulls](https://img.shields.io/docker/pulls/kulhanek/visual-navigation-agent-pytorch.svg?style=flat-square)](https://hub.docker.com/r/kulhanek/visual-navigation-agent-pytorch/) | [visual-navigation-agent-pytorch](https://hub.docker.com/r/kulhanek/visual-navigation-agent-pytorch/)
+
 # Target-driven Visual Navigation Model using Deep Reinforcement Learning
 This is implementation of http://web.stanford.edu/~yukez/papers/icra2017.pdf in PyTorch. It attempts to achieve the same results as the Tensorflow implementation, which can be found here: https://github.com/zfw1226/icra2017-visual-navigation.
 
@@ -14,7 +18,7 @@ This repocitory provides a Tensorflow implementation of the deep siamese actor-c
 [ICRA 2017, Singapore](http://www.icra2017.org/)
 
 ## Setup and run
-This code is implemented in [Pytorch 0.4](https://pytorch.org/). It uses [Docker](http://docker.com/) to automate instalation process. In order to run this code, I recommend pulling it from my [dockerhub repository](http://hub.docker.com/kulhanek/visual-navigation-agent-pytorch).
+This code is implemented in [Pytorch 0.4](https://pytorch.org/). It uses [Docker](http://docker.com/) to automate instalation process. In order to run this code, I recommend pulling it from my [dockerhub repository](https://hub.docker.com/r/kulhanek/visual-navigation-agent-pytorch/).
 
 In order to start training, run those commands:
 ```
