@@ -16,7 +16,7 @@ This repocitory provides a Tensorflow implementation of the deep siamese actor-c
 ## Setup and run
 This code is implemented in [Pytorch 0.4](https://pytorch.org/). It uses [Docker](http://docker.com/) to automate instalation process. In order to run this code, I recommend pulling it from my [dockerhub repository](http://hub.docker.com/kulhanek/visual-navigation-agent-pytorch).
 
-You can run those commands in order to start training:
+In order to start training, run those commands:
 ```
 git clone https://github.com/jkulhanek/visual-navigation-agent-pytorch
 docker-compose run train
