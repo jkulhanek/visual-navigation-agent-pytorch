@@ -1,0 +1,4 @@
+matplotlib
+ai2thor
+Cython
+scikit-image
