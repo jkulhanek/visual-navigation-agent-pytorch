@@ -1,13 +1,17 @@
 version: '3'
 services:
-  train:
-    command: "train.py"
+  agent:
     build:
       context: .      
       args:
         - mode=train
     volumes:
       - agentmodel:/model
+    image: kulhanek/visual-navigation-agent-pytorch
+
+  train:
+    command: "train.py"
+    image: kulhanek/visual-navigation-agent-pytorch-train
 
 volumes:
   agentmodel:
