@@ -6,3 +6,8 @@ services:
       context: .      
       args:
         - mode=train
+    volumes:
+      - agentmodel:/model
+
+volumes:
+  agentmodel:

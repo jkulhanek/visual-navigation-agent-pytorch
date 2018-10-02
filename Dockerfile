@@ -11,6 +11,8 @@ RUN sudo apt-get update && sudo apt-get -y install wget unzip \
     && rm thor_v1_scene_dumps.zip \
     && cd /app
 
+# Prefetch: install packages to previous layers
+RUN python -m pip install matplotlib ai2thor Cython scikit-image
 
 COPY . /app
 RUN /app/setup.py install

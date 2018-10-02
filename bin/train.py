@@ -23,7 +23,9 @@ if __name__ == '__main__':
         help='epsilon parameter for RMSProp optimizer (default: 0.1)')
 
 
-    args = parser.parse_args()
+    args = vars(parser.parse_args())
+    args['h5_file_path'] = '/app/data/{scene}.h5'
+    args['checkpoint_path'] = '/model/checkpoint-{checkpoint}.pth'
 
     #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device('cpu')

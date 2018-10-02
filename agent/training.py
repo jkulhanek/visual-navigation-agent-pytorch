@@ -241,29 +241,3 @@ class Training:
     def print_parameters(self):
         self.logger.info(f"- gamma: {self.config.get('gamma')}")
         self.logger.info(f"- learning rate: {self.config.get('learning_rate')}")
-
-if __name__ == "__main__":
-    mp.set_start_method('spawn')
-
-    #training = Training.load_checkpoint(dict())
-    training = Training(torch.device('cpu'), {
-        'learning_rate': 0.0007001643593729748,
-        'rmsp_alpha': 0.99,
-        'rmsp_epsilon': 0.1,
-        'h5_file_path': "D:\\datasets\\visual_navigation_precomputed\\{scene}.h5"
-    })
-
-    import pickle
-    shared_net = SharedNetwork()
-    scene_nets = { key:SceneSpecificNetwork(4) for key in TASK_LIST.keys() }
-
-    # Load weights trained on tensorflow
-    data = pickle.load(open(os.path.normpath(os.path.join(__file__, '..\\weights.p')), 'rb'), encoding='latin1')
-    def convertToStateDict(data):
-        return {key:torch.Tensor(v) for (key, v) in data.items()}
-
-    training.shared_network.load_state_dict(convertToStateDict(data['navigation']))
-    for key in TASK_LIST.keys():
-        training.scene_networks[key].load_state_dict(convertToStateDict(data[f'navigation/{key}']))
-
-    training.run()
