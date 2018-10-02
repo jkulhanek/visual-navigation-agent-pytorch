@@ -83,40 +83,35 @@ class TrainingOptimizer:
     def get_global_step(self):
         return self.global_step.item()
 
+        
+    def _ensure_shared_grads(self, local_params, shared_params):
+        for param, shared_param in zip(local_params, shared_params):
+            if shared_param.grad is not None:
+                return
+            shared_param._grad = param.grad
+
     def optimize(self, loss, local_params, shared_params):
         local_params = list(local_params)
         shared_params = list(shared_params)
 
         # Fix the optimizer property after unpickling
         self.scheduler.optimizer = self.optimizer
+        self.scheduler.step(self.global_step.item())
 
+        # Increment step
         with self.lock:
-            self.scheduler.step(self.global_step.item())
-
-            # Increment step
             self.global_step.copy_(torch.tensor(self.global_step.item() + 1))
             
-            self.optimizer.zero_grad()
+        self.optimizer.zero_grad()
 
-            # We will set the local gradient to 0
-            for param in local_params:
-                if not param.grad is None:
-                    param.grad.data.zero_()
+        # Calculate the new gradient with the respect to the local network
+        loss.backward()
 
-            # Calculate the new gradient with the respect to the local network
-            loss.backward()
-
-            # Clip gradient
-            torch.nn.utils.clip_grad_norm_(local_params, self.grad_norm)
+        # Clip gradient
+        torch.nn.utils.clip_grad_norm_(local_params, self.grad_norm)
             
-            # Ensure optimization occurs on the local gradients
-            for (shared_param, local_param) in zip(shared_params, local_params):
-                if shared_param.grad is None:
-                    shared_param.grad = local_param.grad.clone()
-                else:
-                    shared_param.grad.copy_(local_param.grad)            
-            
-            self.optimizer.step()
+        self._ensure_shared_grads(local_params, shared_params)
+        self.optimizer.step()
 
 class AnnealingLRScheduler(torch.optim.lr_scheduler._LRScheduler):
     def __init__(self, optimizer, total_epochs, last_epoch=-1):
@@ -224,11 +219,10 @@ class Training:
                 **self.config)
 
         self.threads = [_createThread(i, task) for i, task in enumerate(branches)]
-        
-        for thread in self.threads:
+        for thread in self.threads[:1]:
             thread.start()
 
-        for thread in self.threads:
+        for thread in self.threads[:1]:
             thread.join()
         
 

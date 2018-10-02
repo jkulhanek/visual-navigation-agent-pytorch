@@ -16,6 +16,9 @@ if __name__ == '__main__':
     parser.add_argument('--grad_norm', type = float, default=40.0,
         help='gradient norm clip (default: 40.0)')
 
+    parser.add_argument('--h5_file_path', type = str, default='/app/data/{scene}.h5')
+    parser.add_argument('--checkpoint_path', type = str, default='/model/checkpoint-{checkpoint}.pth')
+
     parser.add_argument('--learning_rate', type = float, default= 0.0007001643593729748)
     parser.add_argument('--rmsp_alpha', type = float, default = 0.99,
         help='decay parameter for RMSProp optimizer (default: 0.99)')
@@ -24,8 +27,6 @@ if __name__ == '__main__':
 
 
     args = vars(parser.parse_args())
-    args['h5_file_path'] = '/app/data/{scene}.h5'
-    args['checkpoint_path'] = '/model/checkpoint-{checkpoint}.pth'
 
     #device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     device = torch.device('cpu')

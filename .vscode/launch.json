@@ -15,7 +15,11 @@
             "name": "Python: Training.py",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/training.py"
+            "program": "${workspaceFolder}/train.py",
+            "args": [
+                "--h5_file_path",
+                "\"D:\\datasets\\visual_navigation_precomputed\\{scene}.h5\""
+            ]
         },
         {
             "name": "Python: Attach",
