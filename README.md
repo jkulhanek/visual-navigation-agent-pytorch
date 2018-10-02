@@ -14,7 +14,7 @@ This repocitory provides a Tensorflow implementation of the deep siamese actor-c
 [ICRA 2017, Singapore](http://www.icra2017.org/)
 
 ## Setup and run
-This code is implemented in [Pytorch 0.4](https://pytorch.org/). It uses [Docker](http://docker.com/) to automate instalation process. In order to run this code, I recommend pulling it from my [dockerhub repository](http://hub.docker.com/kulhanek/visual-navigation-agent-pytorch).
+This code is implemented in [Pytorch 0.4](https://pytorch.org/). It uses [Docker](http://docker.com/) to automate instalation process. In order to run this code, I recommend pulling it from my [dockerhub repository](https://hub.docker.com/r/kulhanek/visual-navigation-agent-pytorch/).
 
 In order to start training, run those commands:
 ```
