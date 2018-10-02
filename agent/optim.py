@@ -3,7 +3,7 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-from torch import optim
+from torch import optim, Tensor
 
 # Non-centered RMSprop update with shared statistics (without momentum)
 class SharedRMSprop(optim.RMSprop):

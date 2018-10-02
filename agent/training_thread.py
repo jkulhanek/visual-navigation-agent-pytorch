@@ -11,6 +11,7 @@ import torch.multiprocessing as mp
 import torch.nn.functional as F
 import numpy as np
 import logging
+from multiprocessing import Condition
 
 TrainingSample = namedtuple('TrainingSample', ('state', 'policy', 'value', 'action_taken', 'goal', 'R', 'temporary_difference'))
 
@@ -22,6 +23,7 @@ class TrainingThread(mp.Process):
     def __init__(self,
             id : int,
             network : torch.nn.Module,
+            saver,
             optimizer,
             scene : str,
             **kwargs):
@@ -32,6 +34,7 @@ class TrainingThread(mp.Process):
         self.env = None
         self.init_args = kwargs
         self.scene = scene
+        self.saver = saver
         self.local_backbone_network = SharedNetwork()
         self.id = id
 
@@ -65,8 +68,6 @@ class TrainingThread(mp.Process):
 
         self.criterion = ActorCriticLoss(entropy_beta)
         self.policy_network = nn.Sequential(SharedNetwork(), SceneSpecificNetwork(self.get_action_space_size()))
-    
-
 
         # Initialize the episode
         self._reset_episode()
@@ -196,11 +197,18 @@ class TrainingThread(mp.Process):
             self.policy_network.parameters(), 
             self.master_network.parameters())
 
-    def run(self):
+    def run(self, master = None):
+        print(f'Thread {self.id} ready')
+        
         # We need to silence all errors on new process
         h5py._errors.silence_errors()
         self._initialize_thread()
-        print(f'Thread {self.id} started')
+                
+        if not master is None:
+            print(f'Master thread {self.id} started')
+        else:
+            print(f'Thread {self.id} started')
+
         try:
             self.env.reset()
             while True:
@@ -209,6 +217,11 @@ class TrainingThread(mp.Process):
                 playout_reward, results, rollout_path = self._forward_explore()
                 # Train on collected samples
                 self._optimize_path(playout_reward, results, rollout_path)
+                
+                print(f'Step finished {self.optimizer.get_global_step()}')
+
+                # Trigger save or other
+                self.saver.after_optimization()                
                 pass
         except Exception as e:
             print(e)
