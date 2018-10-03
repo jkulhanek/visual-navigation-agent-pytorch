@@ -23,7 +23,7 @@ TASK_LIST = {
 class TrainingSaver:
     def __init__(self, shared_network, scene_networks, optimizer, config):
         self.checkpoint_path = config.get('checkpoint_path', 'model/checkpoint-{checkpoint}.pth')
-        self.saving_period = config.get('saving_period', 10 ** 6)
+        self.saving_period = config.get('saving_period', 10 ** 6 // 5)
         self.shared_network = shared_network
         self.scene_networks = scene_networks
         self.optimizer = optimizer
@@ -219,11 +219,17 @@ class Training:
                 **self.config)
 
         self.threads = [_createThread(i, task) for i, task in enumerate(branches)]
-        for thread in self.threads:
-            thread.start()
+        
+        try:
+            for thread in self.threads:
+                thread.start()
 
-        for thread in self.threads:
-            thread.join()
+            for thread in self.threads:
+                thread.join()
+        except KeyboardInterrupt:
+            # we will save the training
+            print('Saving training session')
+            self.saver.save()
         
 
     def _init_logger(self):

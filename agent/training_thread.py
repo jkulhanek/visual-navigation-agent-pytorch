@@ -2,6 +2,7 @@ from agent.network import SceneSpecificNetwork, SharedNetwork, ActorCriticLoss
 from agent.environment import Environment, THORDiscreteEnvironment
 import torch.nn as nn
 from typing import Dict, Collection
+import signal
 import random
 import torch
 import h5py
@@ -198,6 +199,7 @@ class TrainingThread(mp.Process):
             self.master_network.parameters())
 
     def run(self, master = None):
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
         print(f'Thread {self.id} ready')
         
         # We need to silence all errors on new process
