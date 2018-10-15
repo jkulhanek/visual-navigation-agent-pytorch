@@ -49,11 +49,16 @@ class TrainingSaver:
         torch.save(model, open(filename, 'wb'))
 
     def restore(self, state):
-        if 'optimizer' in state: self.optimizer.load_state_dict(state['optimizer'])
-        if 'config' in state: self.config = state['config']
+        if 'optimizer' in state and self.optimizer is not None: self.optimizer.load_state_dict(state['optimizer'])
+        if 'config' in state: 
+            conf = self.config
+            self.config = state['config']
+            for k, v in conf.items():
+                self.config[k] = v
+
         self.shared_network.load_state_dict(state['navigation'])
 
-        tasks = state['config'].get('tasks', TASK_LIST)
+        tasks = self.config.get('tasks', TASK_LIST)
         for scene in tasks.keys():
             self.scene_networks[scene].load_state_dict(state[f'navigation/{scene}'])
 
