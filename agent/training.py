@@ -20,19 +20,36 @@ TASK_LIST = {
   'living_room_08': ['92', '135', '193', '228', '254']
 }
 
+DEFAULT_CONFIG = {
+    'saving_period': 10 ** 6 // 5,
+    'checkpoint_path': 'model/checkpoint-{checkpoint}.pth',
+    'grad_norm': 40.0,
+    'gamma': 0.99,
+    'entropy_beta': 0.01,
+    'max_t': 5,
+}
+
 class TrainingSaver:
     def __init__(self, shared_network, scene_networks, optimizer, config):
-        self.checkpoint_path = config.get('checkpoint_path', 'model/checkpoint-{checkpoint}.pth')
-        self.saving_period = config.get('saving_period', 10 ** 6 // 5)
+        self.config = config
+        n_config = DEFAULT_CONFIG.copy()
+        n_config.update(config)
+        self.config.update(n_config)
+        self.checkpoint_path = self.config['checkpoint_path']
+        self.saving_period = self.config['saving_period']
         self.shared_network = shared_network
         self.scene_networks = scene_networks
-        self.optimizer = optimizer
-        self.config = config
+        self.optimizer = optimizer        
 
     def after_optimization(self):
         iteration = self.optimizer.get_global_step()
         if iteration % self.saving_period == 0:
             self.save()
+
+    def print_config(self, offset: int = 0):
+        for key, val in self.config.items():
+            print((" " * offset) + f"{key}: {val}")
+        pass
 
     def save(self):
         iteration = self.optimizer.get_global_step()
@@ -51,10 +68,9 @@ class TrainingSaver:
     def restore(self, state):
         if 'optimizer' in state and self.optimizer is not None: self.optimizer.load_state_dict(state['optimizer'])
         if 'config' in state: 
-            conf = self.config
-            self.config = state['config']
-            for k, v in conf.items():
-                self.config[k] = v
+            n_config = state['config'].copy()
+            n_config.update(self.config)
+            self.config.update(n_config)
 
         self.shared_network.load_state_dict(state['navigation'])
 
@@ -170,7 +186,9 @@ class Training:
         print(f'Restoring from checkpoint {restore_point}')
         state = torch.load(open(os.path.join(os.path.dirname(checkpoint_path), base_name), 'rb'))
         training = Training(device, state['config'] if 'config' in state else config)
-        training.saver.restore(state)        
+        training.saver.restore(state) 
+        print('Configuration')
+        training.saver.print_config(offset = 4)       
         return training
 
     def initialize(self):
@@ -205,7 +223,6 @@ class Training:
     
     def run(self):
         self.logger.info("Training started")
-        self.print_parameters()
 
         # Prepare threads
         branches = [(scene, int(target)) for scene in TASK_LIST.keys() for target in TASK_LIST.get(scene)]
@@ -242,7 +259,3 @@ class Training:
         logger.setLevel(logging.INFO)
         logger.addHandler(logging.StreamHandler(sys.stdout))
         return logger
-
-    def print_parameters(self):
-        self.logger.info(f"- gamma: {self.config.get('gamma')}")
-        self.logger.info(f"- learning rate: {self.config.get('learning_rate')}")

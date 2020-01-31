@@ -37,12 +37,12 @@ def export_to_csv(data, file):
                 writer.writerow(list(item))
     print(f'CSV file stored "{file}"')
 
-
 class Evaluation:
     def __init__(self, config):
         self.config = config
-        self.shared_net = SharedNetwork()
-        self.scene_nets = { key:SceneSpecificNetwork(ACTION_SPACE_SIZE) for key in TASK_LIST.keys() }
+        self.device = config.get('device', torch.device('cpu'))
+        self.shared_net = SharedNetwork().to(self.device)
+        self.scene_nets = { key:SceneSpecificNetwork(ACTION_SPACE_SIZE).to(self.device) for key in TASK_LIST.keys() }
 
     @staticmethod
     def load_checkpoint(config, fail = True):
@@ -53,32 +53,75 @@ class Evaluation:
         state = torch.load(open(os.path.join(os.path.dirname(checkpoint_path), base_name), 'rb'))
         evaluation = Evaluation(config)
         saver = TrainingSaver(evaluation.shared_net, evaluation.scene_nets, None, evaluation.config)
-        saver.restore(state)        
+        print('Configuration')
+        saver.restore(state)
+        saver.print_config(offset = 4)            
         return evaluation
+
+    def build_agent(self, scene_name):
+        parent = self
+        net = torch.nn.Sequential(parent.shared_net, parent.scene_nets[scene_name])
+        class Agent:
+            def __init__(self, initial_state, target):
+                self.env = THORDiscreteEnvironment(
+                    scene_name=scene_name,
+                    initial_state_id = initial_state,
+                    terminal_state_id = target,
+                    h5_file_path=(lambda scene: parent.config["h5_file_path"].replace("{scene}", scene_name))
+                )
+
+                self.env.reset()
+                self.net = net
+
+            @staticmethod
+            def get_parameters():
+                return net.parameters()
+
+            def act(self):
+                with torch.no_grad():
+                    state = torch.Tensor(self.env.render(mode='resnet_features')).to(parent.device)
+                    target = torch.Tensor(self.env.render_target(mode='resnet_features')).to(parent.device)
+                    (policy, value,) = net.forward((state, target,))
+                    action = F.softmax(policy, dim=0).multinomial(1).cpu().data.numpy()[0]
+
+                self.env.step(action)
+                return (self.env.is_terminal, self.env.collided, self.env.reward)
+        return Agent
         
     
     def run(self):
         scene_stats = dict()
         resultData = []
         for scene_scope, items in TASK_LIST.items():
+            if len(self.config['test_scenes']) != 0 and not scene_scope in self.config['test_scenes']:
+                continue
+
             scene_net = self.scene_nets[scene_scope]
             scene_stats[scene_scope] = list()
             for task_scope in items:
                 env = THORDiscreteEnvironment(
                     scene_name=scene_scope,
                     h5_file_path=(lambda scene: self.config.get("h5_file_path", "D:\\datasets\\visual_navigation_precomputed\\{scene}.h5").replace('{scene}', scene)),
-                    terminal_state_id=int(task_scope)
+                    terminal_state_id=int(task_scope),
                 )
+
+                graph = env._get_graph_handle()
+                hitting_times = graph['hitting_times'][()]
+                shortest_paths = graph['shortest_path_distance'][()]
 
                 ep_rewards = []
                 ep_lengths = []
                 ep_collisions = []
-                for i_episode in range(NUM_EVAL_EPISODES):
-                    env.reset()
+                ep_normalized_lengths = []
+                for (i_episode, start) in enumerate(env.get_initial_states(int(task_scope))):
+                    env.reset(initial_state_id = start)
                     terminal = False
                     ep_reward = 0
                     ep_collision = 0
                     ep_t = 0
+                    hitting_time = hitting_times[start, int(task_scope)]
+                    shortest_path = shortest_paths[start, int(task_scope)]
+
                     while not terminal:
                         state = torch.Tensor(env.render(mode='resnet_features'))
                         target = torch.Tensor(env.render_target(mode='resnet_features'))
@@ -89,22 +132,26 @@ class Evaluation:
                         env.step(action)
                         terminal = env.is_terminal
 
-                        if ep_t == 10000: break
+                        if ep_t == hitting_time: break
                         if env.collided: ep_collision += 1
                         ep_reward += env.reward
-                        ep_t += 1
+                        ep_t += 1                   
+
 
                     ep_lengths.append(ep_t)
                     ep_rewards.append(ep_reward)
                     ep_collisions.append(ep_collision)
+                    ep_normalized_lengths.append(min(ep_t, hitting_time) / shortest_path)
                     if VERBOSE: print("episode #{} ends after {} steps".format(i_episode, ep_t))
 
+                    
                 print('evaluation: %s %s' % (scene_scope, task_scope))
                 print('mean episode reward: %.2f' % np.mean(ep_rewards))
                 print('mean episode length: %.2f' % np.mean(ep_lengths))
                 print('mean episode collision: %.2f' % np.mean(ep_collisions))
+                print('mean normalized episode length: %.2f' % np.mean(ep_normalized_lengths))
                 scene_stats[scene_scope].extend(ep_lengths)
-                resultData.append((scene_scope, str(task_scope), np.mean(ep_rewards), np.mean(ep_lengths), np.mean(ep_collisions),))
+                resultData.append((scene_scope, str(task_scope), np.mean(ep_rewards), np.mean(ep_lengths), np.mean(ep_collisions), np.mean(ep_normalized_lengths),))
 
         print('\nResults (average trajectory length):')
         for scene_scope in scene_stats:

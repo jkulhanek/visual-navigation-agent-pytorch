@@ -22,6 +22,18 @@
             ]
         },
         {
+            "name": "Python: Eval.py",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/eval.py",
+            "args": [
+                "--h5_file_path",
+                "D:\\datasets\\visual_navigation_precomputed\\{scene}.h5",
+                "--checkpoint_path",
+                "weights.pkl"
+            ]
+        },
+        {
             "name": "Python: Attach",
             "type": "python",
             "request": "attach",

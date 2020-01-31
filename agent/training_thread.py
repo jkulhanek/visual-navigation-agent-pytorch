@@ -63,7 +63,7 @@ class TrainingThread(mp.Process):
         self.gamma : float = self.init_args.get('gamma', 0.99)
         self.grad_norm: float = self.init_args.get('grad_norm', 40.0)
         entropy_beta : float = self.init_args.get('entropy_beta', 0.01)
-        self.max_t : int = self.init_args.get('max_t', 1)# TODO: 5)
+        self.max_t : int = self.init_args.get('max_t', 5)
         self.local_t = 0
         self.action_space_size = self.get_action_space_size()
 
